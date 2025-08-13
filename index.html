@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Walkable Plane</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            z-index: 100;
+        }
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: white;
+        }
+        #crosshair::before {
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            margin-top: -1px;
+        }
+        #crosshair::after {
+            left: 50%;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            margin-left: -1px;
+        }
+        
+        /* Start button overlay */
+        #startOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        #startButton {
+            background: linear-gradient(45deg, #00ff88, #00aa55);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        #startButton:hover {
+            background: linear-gradient(45deg, #00aa55, #007733);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        #startButton:active {
+            transform: translateY(0);
+        }
+        
+        /* Blur effect for the world */
+        .blurred {
+            filter: blur(8px);
+            transition: filter 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+    <div id="startOverlay">
+        <button id="startButton">Start Game</button>
+    </div>
+    
+    <div id="instructions">
+        <strong>Controls:</strong><br>
+        WASD - Move<br>
+        SPACE - Jump<br>
+        SHIFT - Run (hold)<br>
+        C - Crouch (toggle)<br>
+        Mouse - Look around<br>
+        Click to enable mouse look
+    </div>
+    <div id="crosshair"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script type="module">
+        import ObjectGeneratorService from './services/ObjectGeneratorService.js';
+        import UserMovementService from './services/UserMovementService.js';
+
+        // Debug: Check if ObjectGeneratorService is loaded
+        console.log('ObjectGeneratorService available:', typeof ObjectGeneratorService);
+        console.log('UserMovementService available:', typeof UserMovementService);
+
+        let scene, camera, renderer;
+        let prevTime = performance.now();
+        
+        // Game state
+        let gameStarted = false;
+        
+        // Movement configuration
+        const GROUND_HEIGHT = 10;
+        
+        // Collision detection
+        let collidableObjects = [];
+        let landableObjects = []; // Objects that can be landed on top of
+        
+        let controls = {
+            enabled: false,
+            pitchObject: null,
+            yawObject: null
+        };
+
+        // User movement service
+        let userMovementService;
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0xffffff, 0, 750);
+            scene.background = new THREE.Color(0x87CEEB);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.y = GROUND_HEIGHT;
+
+            // Control objects for mouse look
+            controls.yawObject = new THREE.Object3D();
+            controls.yawObject.position.y = GROUND_HEIGHT;
+            controls.pitchObject = new THREE.Object3D();
+            controls.pitchObject.add(camera);
+            controls.yawObject.add(controls.pitchObject);
+            scene.add(controls.yawObject);
+
+            // Renderer setup with enhanced shadow settings
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x87CEEB);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // High quality soft shadows
+            renderer.shadowMap.autoUpdate = true;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            renderer.physicallyCorrectLights = true;
+            renderer.domElement.classList.add('blurred'); // Start with blur effect
+            document.body.appendChild(renderer.domElement);
+
+            // Start button functionality
+            const startButton = document.getElementById('startButton');
+            const startOverlay = document.getElementById('startOverlay');
+            
+            startButton.addEventListener('click', () => {
+                gameStarted = true;
+                startOverlay.style.display = 'none';
+                renderer.domElement.classList.remove('blurred');
+                // Enable controls after start
+                setupGameControls();
+            });
+
+            // Create ground plane with enhanced material
+            const planeGeometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
+            const planeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x90EE90,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = -Math.PI / 2;
+            plane.receiveShadow = true;
+            scene.add(plane);
+
+            // Generate world objects
+            const objectGeneratorService = new ObjectGeneratorService(scene, collidableObjects, landableObjects, GROUND_HEIGHT);
+            objectGeneratorService.generateWorldObjects();
+
+            // Initialize user movement service
+            userMovementService = new UserMovementService(controls, collidableObjects, landableObjects, {
+                GROUND_HEIGHT: GROUND_HEIGHT,
+                GRAVITY: 8.0,
+                JUMP_VELOCITY: 250,
+                WALK_SPEED: 450.0,
+                RUN_SPEED: 1000.0,
+                PLAYER_RADIUS: 5,
+                PLAYER_HEIGHT: 8
+            });
+
+            // Add a reference to the game state so UserMovementService can check it
+            userMovementService.getGameStarted = () => gameStarted;
+
+            // Enhanced Lighting System
+            // Ambient light - reduced intensity for more dramatic shadows
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+            scene.add(ambientLight);
+
+            // Main directional light (sun) - enhanced with better shadows
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(-200, 300, 100);
+            directionalLight.castShadow = true;
+            
+            // High-quality shadow settings
+            directionalLight.shadow.mapSize.width = 4096;
+            directionalLight.shadow.mapSize.height = 4096;
+            directionalLight.shadow.camera.left = -400;
+            directionalLight.shadow.camera.right = 400;
+            directionalLight.shadow.camera.top = 400;
+            directionalLight.shadow.camera.bottom = -400;
+            directionalLight.shadow.camera.near = 1;
+            directionalLight.shadow.camera.far = 1000;
+            directionalLight.shadow.bias = -0.0001;
+            directionalLight.shadow.radius = 4;
+            scene.add(directionalLight);
+
+            // Secondary fill light to reduce harsh shadows
+            const fillLight = new THREE.DirectionalLight(0x87CEEB, 0.4);
+            fillLight.position.set(100, 200, -100);
+            fillLight.castShadow = true;
+            fillLight.shadow.mapSize.width = 2048;
+            fillLight.shadow.mapSize.height = 2048;
+            fillLight.shadow.camera.left = -200;
+            fillLight.shadow.camera.right = 200;
+            fillLight.shadow.camera.top = 200;
+            fillLight.shadow.camera.bottom = -200;
+            fillLight.shadow.camera.near = 1;
+            fillLight.shadow.camera.far = 500;
+            fillLight.shadow.bias = -0.0001;
+            scene.add(fillLight);
+
+            // Hemisphere light for natural outdoor lighting
+            const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x90EE90, 0.4);
+            hemisphereLight.position.set(0, 50, 0);
+            scene.add(hemisphereLight);
+
+            // Add some point lights for additional illumination in key areas
+            // const pointLight1 = new THREE.PointLight(0xffffff, 0.8, 200);
+            // pointLight1.position.set(0, 50, 0);
+            // pointLight1.castShadow = true;
+            // pointLight1.shadow.mapSize.width = 1024;
+            // pointLight1.shadow.mapSize.height = 1024;
+            // pointLight1.shadow.bias = -0.0001;
+            // scene.add(pointLight1);
+
+            // const pointLight2 = new THREE.PointLight(0xffaa88, 0.6, 150);
+            // pointLight2.position.set(-300, 40, -300);
+            // pointLight2.castShadow = true;
+            // pointLight2.shadow.mapSize.width = 1024;
+            // pointLight2.shadow.mapSize.height = 1024;
+            // pointLight2.shadow.bias = -0.0001;
+            // scene.add(pointLight2);
+
+            // const pointLight3 = new THREE.PointLight(0x88aaff, 0.6, 150);
+            // pointLight3.position.set(300, 40, 300);
+            // pointLight3.castShadow = true;
+            // pointLight3.shadow.mapSize.width = 1024;
+            // pointLight3.shadow.mapSize.height = 1024;
+            // pointLight3.shadow.bias = -0.0001;
+            // scene.add(pointLight3);
+
+            // Event listeners - but don't enable movement controls until game starts
+            setupWindowResizeListener();
+            
+            // Window resize event listener
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function setupGameControls() {
+            // Setup movement controls only after game starts
+            userMovementService.setupEventListeners();
+            // Enable the controls
+            controls.enabled = true;
+        }
+
+        function setupWindowResizeListener() {
+            // Only setup window resize, not movement controls
+            // Movement controls are set up in setupGameControls()
+        }
+
+        function onWindowResize() {
+            userMovementService.onWindowResize(camera, renderer);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+            prevTime = time;
+
+            // Only update user movement if game has started
+            if (gameStarted) {
+                userMovementService.update(delta);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize and start
+        init();
+        animate();
+    </script>
+</body>
+</html>

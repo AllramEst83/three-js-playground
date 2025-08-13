@@ -4,103 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Three.js Walkable Plane</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #000;
-            font-family: Arial, sans-serif;
-        }
-        canvas {
-            display: block;
-        }
-        #instructions {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 15px;
-            border-radius: 5px;
-            font-size: 14px;
-            z-index: 100;
-        }
-        #crosshair {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 20px;
-            height: 20px;
-            margin: -10px 0 0 -10px;
-            z-index: 100;
-        }
-        #crosshair::before,
-        #crosshair::after {
-            content: '';
-            position: absolute;
-            background: white;
-        }
-        #crosshair::before {
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            margin-top: -1px;
-        }
-        #crosshair::after {
-            left: 50%;
-            top: 0;
-            width: 2px;
-            height: 100%;
-            margin-left: -1px;
-        }
-        
-        /* Start button overlay */
-        #startOverlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        
-        #startButton {
-            background: linear-gradient(45deg, #00ff88, #00aa55);
-            color: white;
-            border: none;
-            padding: 20px 40px;
-            font-size: 24px;
-            font-weight: bold;
-            border-radius: 10px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-        
-        #startButton:hover {
-            background: linear-gradient(45deg, #00aa55, #007733);
-            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.5);
-            transform: translateY(-2px);
-        }
-        
-        #startButton:active {
-            transform: translateY(0);
-        }
-        
-        /* Blur effect for the world */
-        .blurred {
-            filter: blur(8px);
-            transition: filter 0.5s ease;
-        }
-    </style>
+   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
     <div id="startOverlay">
@@ -120,8 +24,8 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script type="module">
-        import ObjectGeneratorService from './services/ObjectGeneratorService.js';
-        import UserMovementService from './services/UserMovementService.js';
+        import ObjectGeneratorService from './assets/services/ObjectGeneratorService.js';
+        import UserMovementService from './assets/services/UserMovementService.js';
 
         // Debug: Check if ObjectGeneratorService is loaded
         console.log('ObjectGeneratorService available:', typeof ObjectGeneratorService);
